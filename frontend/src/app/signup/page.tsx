@@ -47,11 +47,11 @@ export default function SignupPage() {
         );
       }
 
-      localStorage.setItem("token", data.access_token);
+      localStorage.setItem("access_token", data.access_token);
       localStorage.setItem(
         "user",
         JSON.stringify({
-          user_id: data.user_id,
+          id: data.user_id,
           name: data.name,
           email: data.email,
         })
