@@ -44,9 +44,16 @@ export default function Home() {
   const [compactMode, setCompactMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  function authFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+    const token = localStorage.getItem("access_token");
+    const headers = new Headers(init.headers);
+    if (token) headers.set("Authorization", "Bearer " + token);
+    return fetch(input, { ...init, headers });
+  }
+
   async function loadHistory() {
     try {
-      const response = await fetch(`${API_URL}/research`);
+      const response = await authFetch(`${API_URL}/research`);
       if (!response.ok) throw new Error("Could not load research history");
       const data = await response.json();
       setHistory(Array.isArray(data) ? data : []);
@@ -58,6 +65,8 @@ export default function Home() {
 
   useEffect(() => {
     try {
+      const token = localStorage.getItem("access_token");
+      if (!token) { router.replace("/login"); return; }
       const savedUser = localStorage.getItem("user");
       if (savedUser) setUser(JSON.parse(savedUser));
       setDarkMode(localStorage.getItem("deepresearch-dark") === "true");
@@ -70,6 +79,12 @@ export default function Home() {
         if (!response.ok) throw new Error("Backend error");
         const data = await response.json();
         setBackendStatus(data.status === "healthy" ? "Connected" : "Error");
+        const profileResponse = await authFetch(`${API_URL}/auth/me`);
+        if (profileResponse.status === 401 || profileResponse.status === 403) { logout(); return; }
+        if (!profileResponse.ok) throw new Error("Could not verify your account");
+        const profile = await profileResponse.json();
+        setUser(profile);
+        localStorage.setItem("user", JSON.stringify(profile));
         await loadHistory();
       } catch {
         setBackendStatus("Disconnected");
@@ -120,7 +135,7 @@ export default function Home() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const response = await fetch(`${API_URL}/files/upload`, { method: "POST", body: formData });
+      const response = await authFetch(`${API_URL}/files/upload`, { method: "POST", body: formData });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "File upload failed.");
       setUploadedFile({ filename: data.filename, extracted_text: data.extracted_text || "" });
@@ -147,7 +162,7 @@ export default function Home() {
     setMessage("Your AI research is starting...");
     setResult(null);
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API_URL}/research/autonomous?query=${encodeURIComponent(finalQuery)}`,
         { method: "POST", headers: { Accept: "application/json" } }
       );
@@ -167,7 +182,7 @@ export default function Home() {
 
   async function openPreviousReport(item: HistoryItem) {
     try {
-      const response = await fetch(`${API_URL}/research/${item.id}`);
+      const response = await authFetch(`${API_URL}/research/${item.id}`);
       if (!response.ok) throw new Error("Could not open this report.");
       const data = await response.json();
       setQuery(data.query || "");
@@ -186,7 +201,7 @@ export default function Home() {
     if (!window.confirm("Are you sure you want to permanently delete this report?")) return;
     setDeletingId(id);
     try {
-      const response = await fetch(`${API_URL}/research/${id}`, { method: "DELETE" });
+      const response = await authFetch(`${API_URL}/research/${id}`, { method: "DELETE" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "Could not delete report.");
       setHistory(previous => previous.filter(item => item.id !== id));
@@ -206,7 +221,7 @@ export default function Home() {
     }
     setDownloadingFormat(format);
     try {
-      const response = await fetch(`${API_URL}/research/${result.id}/export/${format}`);
+      const response = await authFetch(`${API_URL}/research/${result.id}/export/${format}`);
       if (!response.ok) {
         let detail = "Report download failed.";
         try { const data = await response.json(); detail = data.detail || detail; } catch { /* ignore */ }
